@@ -107,6 +107,7 @@ def debug(path, preds):
 
 def predict(X, detector):
   predictions = []
+  pose_preds = []
 
   prev_pose_id, pose_id = -1, -1
   # X: list of skeletons of a video clip
@@ -117,6 +118,7 @@ def predict(X, detector):
 
     # Make detection
     pose_id = detect_pose(skeleton, detector)
+    pose_preds.append(pose_id)
     # print(pose_id)
     if pose_id != -1:
       # print(prev_pose_id, pose_id)
@@ -126,7 +128,7 @@ def predict(X, detector):
 
       prev_pose_id = pose_id
 
-  return predictions
+  return predictions, pose_preds
         
 
 
@@ -145,7 +147,7 @@ def main():
     if y not in detections:
       detections[y] = {'correct': 0, 'cnt': 0}
     detections[y]['cnt'] += 1
-    pred = predict(X, detector)
+    pred, pose_pred = predict(X, detector)
     # print(pred)
     # Predict only 1 correct gesture -> accurate
 
