@@ -5,6 +5,7 @@ from tqdm import tqdm
 import logging
 import cv2
 import os
+import math
 
 logger = logging.getLogger('')
 logger.setLevel(logging.DEBUG)
@@ -16,7 +17,7 @@ file_handler.setFormatter(file_formatter)
 logger.addHandler(file_handler)
 
 poses = ['palm', 'fist', 'stop', 'thumb_in', 'left', 'right', 'up', 'down', 'rotate']
-gestures = ['move down', 'close fist', 'move left', 'move right', 'rotate', 'move up', 'negative']
+gestures = ['close fist', 'move left', 'move right', 'move up', 'move down', 'rotate', 'stop', 'thumb_in', 'negative']
 start_end_label_matches = {'move down': ['palm', 'down'], \
                             'move up': ['palm','up'], \
                             'move left': ['palm','left'], \
@@ -47,26 +48,30 @@ def detect_gesture(prev_pose_id, pose_id, start_end_matches):
 def detect_pose(feature, detector, thres=0.5):
   yaw, pitch, roll, handedness = feature[-4:]
   # feature vector X
-  X = np.array(skeleton).reshape(1,-1)
+  X = np.array(feature).reshape(1,-1)
   pred = detector.predict_proba(X)[0]
   pose_idx = np.argmax(pred)
   score = np.max(pred)
+
+  # X = np.array(feature).reshape(1,-1)
+  # pose_idx = detector.predict(X)[0]
+  # score = 0.5
 
   if score < thres:
     return -1
 
   if poses[pose_idx] == "palm":
-    if yaw >= math.pi/4:
+    if yaw >= math.pi/6:
       return poses.index("right")
-    elif yaw <= -math.pi/4:
+    elif yaw <= -math.pi/6:
       return poses.index("left")
     else:
-      if pitch >= math.pi/4:
+      if pitch >= math.pi/6:
         return poses.index("up")
-      elif pitch <= -math.pi/4:
+      elif pitch <= -math.pi/6:
         return poses.index("down")
       else:
-        if (handedness == 1 and roll <= -math.pi/4) or (handedness == 0 and roll >= math.pi/4):
+        if (handedness == 1 and roll <= -math.pi/2) or (handedness == 0 and roll >= math.pi/2):
           return poses.index("rotate")
         else:
           return pose_idx
@@ -74,8 +79,8 @@ def detect_pose(feature, detector, thres=0.5):
   elif poses[pose_idx] == "fist":
     return pose_idx
   elif poses[pose_idx] == "stop":
-    if (handedness == 1 and roll <= (-math.pi/4)) or (handedness == 0 and roll >= (math.pi/4)):
-      return "-1
+    if (handedness == 1 and (-math.pi/6)) >= roll or (handedness == 0 and (math.pi/6) <= roll):
+      return -1
     return pose_idx
   elif poses[pose_idx] == "thumb_in":
     return pose_idx
@@ -107,17 +112,19 @@ def predict(X, detector):
   # X: list of skeletons of a video clip
   
   for skeleton in X:
-    inp = np.array(skeleton).reshape(1,-1)
+    if len(skeleton) == 0:
+      continue
 
     # Make detection
-    pose_id = predict(inp, detector)
-  
+    pose_id = detect_pose(skeleton, detector)
+    # print(pose_id)
     if pose_id != -1:
-      prev_pose_id = pose_id
+      # print(prev_pose_id, pose_id)
+      gesture_id = detect_gesture(prev_pose_id, pose_id, start_end_matches)
+      if gesture_id != -1:
+        predictions.append(gesture_id)
 
-    gesture_id = detect_gesture(prev_pose_id, pose_id, start_end_matches)
-    if gesture_id != -1:
-      predictions.append(gesture_id)
+      prev_pose_id = pose_id
 
   return predictions
         
@@ -126,10 +133,10 @@ def predict(X, detector):
 def main():
   detections = {}
   # init detector
-  detector = StaticHandPoseClassifier('weights\\LogisticRegression_0411.pkl', 'weights\\StandardScaler_0404.pkl')
+  detector = StaticHandPoseClassifier('weights\\MLPClassifier_0411.pkl', 'weights\\StandardScaler_0411.pkl')
 
   # load evaluatation dataset
-  with open('array_dynamic.pkl', 'rb') as f:
+  with open('array_dynamic_0404.pkl', 'rb') as f:
     data = pickle.load(f)
 
   len_data = len(data)

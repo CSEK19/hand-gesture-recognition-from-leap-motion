@@ -14,9 +14,10 @@ import os, glob, json
 from model import StaticHandPoseClassifier
 from visualize import convert_distortion_maps, undistort
 import pickle
+import math
 
 poses = ['palm', 'fist', 'stop', 'thumb_in', 'left', 'right', 'up', 'down', 'rotate']
-gestures = ['move down', 'close fist', 'move left', 'move right', 'rotate', 'move up', 'negative']
+gestures = ['close fist', 'move left', 'move right', 'move up', 'move down', 'rotate', 'stop', 'thumb_in', 'negative']
 start_end_label_matches = {'move down': ['palm', 'down'], \
                             'move up': ['palm','up'], \
                             'move left': ['palm','left'], \
@@ -44,7 +45,7 @@ def detect_gesture(prev_pose_id, pose_id, start_end_matches):
   return -1
 
 def extract_feature(frame):
-  image = frame.images[0]
+  hand = frame.hands[0]
   feature = []
   # extract skeleton: palm, wrist, thumb(3), index(4), middle(4), ring(4), pinky(4)
   feature += [hand.palm_position.x, hand.palm_position.y, hand.palm_position.z]
@@ -68,26 +69,31 @@ def extract_feature(frame):
 def detect_pose(feature, detector, thres=0.5):
   yaw, pitch, roll, handedness = feature[-4:]
   # feature vector X
-  X = np.array(skeleton).reshape(1,-1)
+  X = np.array(feature).reshape(1,-1)
   pred = detector.predict_proba(X)[0]
   pose_idx = np.argmax(pred)
   score = np.max(pred)
 
+  # X = np.array(feature).reshape(1,-1)
+  # pose_idx = detector.predict(X)[0]
+  # score = 0.5
+
+  print(score)
   if score < thres:
     return -1
 
   if poses[pose_idx] == "palm":
-    if yaw >= math.pi/4:
+    if yaw >= math.pi/6:
       return poses.index("right")
-    elif yaw <= -math.pi/4:
+    elif yaw <= -math.pi/6:
       return poses.index("left")
     else:
-      if pitch >= math.pi/4:
+      if pitch >= math.pi/6:
         return poses.index("up")
-      elif pitch <= -math.pi/4:
+      elif pitch <= -math.pi/6:
         return poses.index("down")
       else:
-        if (handedness == 1 and roll <= -math.pi/4) or (handedness == 0 and roll >= math.pi/4):
+        if (handedness == 1 and roll <= -math.pi/2) or (handedness == 0 and roll >= math.pi/2):
           return poses.index("rotate")
         else:
           return pose_idx
@@ -95,8 +101,8 @@ def detect_pose(feature, detector, thres=0.5):
   elif poses[pose_idx] == "fist":
     return pose_idx
   elif poses[pose_idx] == "stop":
-    if (handedness == 1 and roll <= (-math.pi/4)) or (handedness == 0 and roll >= (math.pi/4)):
-      return "-1
+    if (handedness == 1 and (-math.pi/6)) >= roll or (handedness == 0 and (math.pi/6) <= roll):
+      return -1
     return pose_idx
   elif poses[pose_idx] == "thumb_in":
     return pose_idx
@@ -115,9 +121,10 @@ def run(controller, detector):
 
   while True:
     frame = controller.frame()
+    image = frame.images[0]
 
     # record if image is valid
-    if not frame.is_valid:
+    if not image.is_valid:
       continue
 
     if not maps_initialized:
@@ -132,16 +139,18 @@ def run(controller, detector):
       feature = extract_feature(frame)
 
       # Make detection
-      pose_id = predict(feature, detector)
-    
+      pose_id = detect_pose(feature, detector)
+      # print(pose_id)
       if pose_id != -1:
-        prev_pose_id = pose_id
+        # print(prev_pose_id, pose_id)
+        gesture_id = detect_gesture(prev_pose_id, pose_id, start_end_matches)
+        if gesture_id != -1:
+          print(gestures[gesture_id])
 
-      gesture_id = detect_gesture(prev_pose_id, pose_id, start_end_matches)
-      print(gestures[gesture_id])
-      
+        prev_pose_id = pose_id
       # visualize
-      vis_img = cv2.putText(vis_img, f'{poses[pose_id]}:{score}', (100,150), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,0,0), 1, cv2.LINE_AA)
+      if pose_id != -1:
+        vis_img = cv2.putText(vis_img, f'{poses[pose_id]}', (100,150), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,0,0), 1, cv2.LINE_AA)
 
 
       # if gesture_id != -1 and display_cnt < n_frames_displayed:
@@ -158,7 +167,7 @@ def main():
     # listener = SampleListener()
     controller = Leap.Controller()
     controller.set_policy_flags(Leap.Controller.POLICY_IMAGES)
-    detector = StaticHandPoseClassifier('weights\\LogisticRegression_0411.pkl', 'weights\\StandardScaler_0404.pkl')
+    detector = StaticHandPoseClassifier('weights\\MLPClassifier_0411.pkl', 'weights\\StandardScaler_0411.pkl')
 
     # Keep this process running until Enter is pressed
     print("Press Enter to quit...")

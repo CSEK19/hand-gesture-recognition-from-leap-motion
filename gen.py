@@ -25,8 +25,7 @@ lst_gesture = {
     'right': 4,
     'rotate': 5,
     'up': 6,
-    'negative': 7,
-
+    'negative': 7
 }
 
 lst_d_gesture = {

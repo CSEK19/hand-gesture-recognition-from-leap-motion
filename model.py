@@ -1,5 +1,6 @@
 import numpy as np
 import pickle 
+from scipy.spatial.distance import pdist
 
 class StaticHandPoseClassifier:
   def __init__(self, weight_file, std_scale):
@@ -24,7 +25,7 @@ class StaticHandPoseClassifier:
     X = self.std_scale.transform(X)
 
     y = self.weight.predict(X)
-    return [self.classes[i] for i in y]
+    return y
   
   def predict_proba(self, X):
     try:
