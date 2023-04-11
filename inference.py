@@ -15,31 +15,33 @@ from model import StaticHandPoseClassifier
 from visualize import convert_distortion_maps, undistort
 import pickle
 
-poses = ['palm', 'fist', 'stop', 'left', 'right', 'up', 'down', 'rotate', 'thumb_in']
+poses = ['palm', 'fist', 'stop', 'thumb_in', 'left', 'right', 'up', 'down', 'rotate']
 gestures = ['move down', 'close fist', 'move left', 'move right', 'rotate', 'move up', 'negative']
 start_end_label_matches = {'move down': ['palm', 'down'], \
                             'move up': ['palm','up'], \
                             'move left': ['palm','left'], \
                             'move right': ['palm', 'right'], \
                             'close fist': ['palm', 'fist'], \
-                            'rotate': ['palm', 'rotate']}
+                            'rotate': ['palm', 'rotate'], \
+                            'stop': ['palm', 'stop'], \
+                            'thumb_in': ['palm', 'thumb_in']}
 
 start_end_matches = {}
 for gesture in start_end_label_matches:
-    gesture_id = gestures.index(gesture)
-    start_end_matches[gesture_id] = []
-    [start_end_matches[gesture_id].append(poses.index(x)) for x in start_end_label_matches[gesture]]
+  gesture_id = gestures.index(gesture)
+  start_end_matches[gesture_id] = []
+  [start_end_matches[gesture_id].append(poses.index(x)) for x in start_end_label_matches[gesture]]
 
 
 def detect_gesture(prev_pose_id, pose_id, start_end_matches):
-    # prev_pose_id: the previous pose
-    # pose_id: the newly detected pose
-    # start_end_matches: dict of start pose and end pose pairs to match dynamic gestures
-    for gesture_id in start_end_matches:
-        pair = start_end_matches[gesture_id]
-        if pair[0] == prev_pose_id and pair[1] == pose_id:
-            return gesture_id
-    return -1
+  # prev_pose_id: the previous pose
+  # pose_id: the newly detected pose
+  # start_end_matches: dict of start pose and end pose pairs to match dynamic gestures
+  for gesture_id in start_end_matches:
+    pair = start_end_matches[gesture_id]
+    if pair[0] == prev_pose_id and pair[1] == pose_id:
+      return gesture_id
+  return -1
 
 def extract_feature(frame):
   image = frame.images[0]
@@ -156,7 +158,7 @@ def main():
     # listener = SampleListener()
     controller = Leap.Controller()
     controller.set_policy_flags(Leap.Controller.POLICY_IMAGES)
-    detector = StaticHandPoseClassifier('weights\\LogisticRegression_0404.pkl', 'weights\\StandardScaler_0404.pkl')
+    detector = StaticHandPoseClassifier('weights\\LogisticRegression_0411.pkl', 'weights\\StandardScaler_0404.pkl')
 
     # Keep this process running until Enter is pressed
     print("Press Enter to quit...")

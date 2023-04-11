@@ -15,14 +15,16 @@ file_formatter = logging.Formatter(
 file_handler.setFormatter(file_formatter)
 logger.addHandler(file_handler)
 
-poses = ['down', 'fist', 'left', 'up', 'palm', 'right', 'rotate','negative']
+poses = ['palm', 'fist', 'stop', 'thumb_in', 'left', 'right', 'up', 'down', 'rotate']
 gestures = ['move down', 'close fist', 'move left', 'move right', 'rotate', 'move up', 'negative']
 start_end_label_matches = {'move down': ['palm', 'down'], \
                             'move up': ['palm','up'], \
                             'move left': ['palm','left'], \
                             'move right': ['palm', 'right'], \
                             'close fist': ['palm', 'fist'], \
-                            'rotate': ['palm', 'rotate']}
+                            'rotate': ['palm', 'rotate'], \
+                            'stop': ['palm', 'stop'], \
+                            'thumb_in': ['palm', 'thumb_in']}
 
 start_end_matches = {}
 for gesture in start_end_label_matches:
@@ -30,7 +32,8 @@ for gesture in start_end_label_matches:
     start_end_matches[gesture_id] = []
     [start_end_matches[gesture_id].append(poses.index(x)) for x in start_end_label_matches[gesture]]
 
-def detectGesture(prev_pose_id, pose_id, start_end_matches):
+
+def detect_gesture(prev_pose_id, pose_id, start_end_matches):
     # prev_pose_id: the previous pose
     # pose_id: the newly detected pose
     # start_end_matches: dict of start pose and end pose pairs to match dynamic gestures
@@ -39,6 +42,45 @@ def detectGesture(prev_pose_id, pose_id, start_end_matches):
         if pair[0] == prev_pose_id and pair[1] == pose_id:
             return gesture_id
     return -1
+
+
+def detect_pose(feature, detector, thres=0.5):
+  yaw, pitch, roll, handedness = feature[-4:]
+  # feature vector X
+  X = np.array(skeleton).reshape(1,-1)
+  pred = detector.predict_proba(X)[0]
+  pose_idx = np.argmax(pred)
+  score = np.max(pred)
+
+  if score < thres:
+    return -1
+
+  if poses[pose_idx] == "palm":
+    if yaw >= math.pi/4:
+      return poses.index("right")
+    elif yaw <= -math.pi/4:
+      return poses.index("left")
+    else:
+      if pitch >= math.pi/4:
+        return poses.index("up")
+      elif pitch <= -math.pi/4:
+        return poses.index("down")
+      else:
+        if (handedness == 1 and roll <= -math.pi/4) or (handedness == 0 and roll >= math.pi/4):
+          return poses.index("rotate")
+        else:
+          return pose_idx
+  
+  elif poses[pose_idx] == "fist":
+    return pose_idx
+  elif poses[pose_idx] == "stop":
+    if (handedness == 1 and roll <= (-math.pi/4)) or (handedness == 0 and roll >= (math.pi/4)):
+      return "-1
+    return pose_idx
+  elif poses[pose_idx] == "thumb_in":
+    return pose_idx
+  
+  return -1
 
 def debug(path, preds):
   src_path = path
@@ -60,46 +102,31 @@ def debug(path, preds):
 
 def predict(X, detector):
   predictions = []
-  pose_predictions = []
-  prev_tmp_pose = -1
-  min_frame_thres = 10
-  tmp_cnt = 0
 
-  negative_id = poses.index('negative')
-  prev_pose_id, pose_id = negative_id, negative_id
+  prev_pose_id, pose_id = -1, -1
   # X: list of skeletons of a video clip
   
   for skeleton in X:
-    if len(skeleton) != 70:
-      pose_predictions.append('?')
-      continue
     inp = np.array(skeleton).reshape(1,-1)
-    pred = detector.predict_proba(inp)[0] # score array
-    # tmp_pose = detector.predict(X)[0]
-    tmp_pose = np.argmax(pred)
-    pose_predictions.append(tmp_pose)
-    score = np.max(pred)
 
-    if tmp_pose != negative_id and tmp_pose != pose_id:
-        tmp_cnt = 0 if (tmp_pose != prev_tmp_pose) else (tmp_cnt+1)
-        prev_tmp_pose = tmp_pose
-        # accept the pose if the count reach the minimum threshold
-        if tmp_cnt >= min_frame_thres:
-            pose_id = tmp_pose
-            # detect the dynamic gesture
-            gesture_id = detectGesture(prev_pose_id, pose_id, start_end_matches)
-            prev_pose_id = pose_id
-            if gesture_id != -1:
-              predictions.append(gesture_id)
+    # Make detection
+    pose_id = predict(inp, detector)
+  
+    if pose_id != -1:
+      prev_pose_id = pose_id
 
-  return predictions, pose_predictions
+    gesture_id = detect_gesture(prev_pose_id, pose_id, start_end_matches)
+    if gesture_id != -1:
+      predictions.append(gesture_id)
+
+  return predictions
         
 
 
 def main():
   detections = {}
   # init detector
-  detector = StaticHandPoseClassifier('weights\SVC_v2.pkl')
+  detector = StaticHandPoseClassifier('weights\\LogisticRegression_0411.pkl', 'weights\\StandardScaler_0404.pkl')
 
   # load evaluatation dataset
   with open('array_dynamic.pkl', 'rb') as f:
@@ -111,24 +138,23 @@ def main():
     if y not in detections:
       detections[y] = {'correct': 0, 'cnt': 0}
     detections[y]['cnt'] += 1
-    pred, pose_pred = predict(X, detector)
+    pred = predict(X, detector)
     # print(pred)
     # Predict only 1 correct gesture -> accurate
 
     if (len(pred) == 0 and y == gestures.index('negative')) or (len(pred) == 1 and pred[0] == y):
       detections[y]['correct'] += 1
       correct += 1
-    else: # debug
-      logger.info(f'{gestures[y]}, {path}: {[gestures[x] for x in pred]}')
-      debug(path, pose_pred)
+    # else: # debug
+    #   logger.info(f'{gestures[y]}, {path}: {[gestures[x] for x in pred]}')
+    #   debug(path, pose_pred)
 
   print(f'Accuracy: {correct/len_data}')
   for y in detections:
     name = gestures[y]
     correct, cnt = detections[y]["correct"], detections[y]["cnt"]
     print(f'{name}: {correct}/{cnt}')
-  # for y in data:
-    # print(f'Accuracy {gestures[y]}: {detections[y]["correct"]}/{detections[y]["cnt"]}')
+
 
 if __name__ == "__main__":
   main()
