@@ -12,6 +12,7 @@ import cv2, Leap, math, ctypes
 import numpy as np
 import os, glob, json
 
+FINGERS = ["thumb", "index", "middle", "ring", "pinky"]
 def convert_distortion_maps(image):
 
     distortion_length = image.distortion_width * image.distortion_height
@@ -73,14 +74,14 @@ def undistort(image, coordinate_map, coefficient_map, width, height):
                              cv2.INTER_LINEAR)
     return destination
 
-DYNAMIC_GESTURES = ['d_fist', 'd_rotate', 'd_left', 'd_right', 'd_up', 'd_down', 'd_negative', 'd_stop', 'd_thumb']
-STATIC_GESTURES = ['palm','fist','up','down','left','right','rotate', 'negative', 'stop', 'thumb_in']
+DYNAMIC_GESTURES = ['d_fist', 'd_rotate_left', 'd_rotate_right', 'd_left', 'd_right', 'd_up', 'd_down', 'd_negative', 'd_stop', 'd_thumb']
+STATIC_GESTURES = ['palm', 'palm_left', 'palm_right', 'palm_up', 'up', 'down', 'left', 'right', 'fist', 'hook', 'stop', 'thumb_in', 'negative']
 
 def run(controller):
     maps_initialized = False
 
-    out_dir = 'LeapDatav2/Khang'
-    dynamic = True
+    out_dir = 'data_collection/LeapDatav4/Khang'
+    dynamic = False
     recording = False
     stop_flag = False
 
@@ -105,47 +106,47 @@ def run(controller):
 
         # recording skeleton and depth frame
         if recording:
-            if frame_id == 100 and dynamic==False:
+            if frame_id == 150 and dynamic==False:
                 stop_flag = True
-            if frame_id > 0 and recorded_data[frame_id-1]['origin_frame'] == frame.id:
-                pass
             else:
-                recorded_frames.append(undistorted_left)
-                recorded_data[frame_id] = {}
+                if frame_id > 0 and recorded_data[frame_id-1]['origin_frame'] == frame.id:
+                    pass
+                else:
+                    recorded_frames.append(undistorted_left)
+                    recorded_data[frame_id] = {}
 
-                recorded_data[frame_id]['origin_frame'] = frame.id
-                recorded_data[frame_id]['hands'] = []
+                    recorded_data[frame_id]['origin_frame'] = frame.id
+                    recorded_data[frame_id]['hands'] = []
 
-                for hand in frame.hands:
-                    hand_data = {}
-                    hand_data['handedness'] = "Left" if hand.is_left else "Right"
-                    hand_data['direction'] = [hand.direction.x, hand.direction.y, hand.direction.z]
-                    hand_data['normal'] = [hand.palm_normal.x, hand.palm_normal.y, hand.palm_normal.z]
-                    hand_data['roll'] = hand.palm_normal.roll
-                    hand_data['pitch'] = hand.direction.pitch
-                    hand_data['yaw'] = hand.direction.yaw
+                    for hand in frame.hands:
+                        hand_data = {}
+                        hand_data['handedness'] = "Left" if hand.is_left else "Right"
+                        hand_data['direction'] = [hand.direction.x, hand.direction.y, hand.direction.z]
+                        hand_data['normal'] = [hand.palm_normal.x, hand.palm_normal.y, hand.palm_normal.z]
+                        hand_data['roll'] = hand.palm_normal.roll
+                        hand_data['pitch'] = hand.direction.pitch
+                        hand_data['yaw'] = hand.direction.yaw
+                        hand_data['wrist'] = [hand.arm.wrist_position.x, hand.arm.wrist_position.y, hand.arm.wrist_position.z]
+
+                        # extract skeleton: palm, thumb(4), index(5), middle(5), ring(5), pinky(5)
+                        hand_data['palm'] = [hand.palm_position.x, hand.palm_position.y, hand.palm_position.z]
+                        for finger in hand.fingers:
+                            # print(finger.id, finger.type)
+                            hand_data[FINGERS[finger.type]] = []
+                            # Get bones
+                            for b in range(0, 4):
+                                bone = finger.bone(b)
+                                if b == 0:
+                                    hand_data[FINGERS[finger.type]] += [bone.prev_joint.x, bone.prev_joint.y, bone.prev_joint.z]
+                                hand_data[FINGERS[finger.type]] += [bone.next_joint.x, bone.next_joint.y, bone.next_joint.z]
 
 
-                    hand_data['skeleton'] = []
-                    # extract skeleton: palm, wrist, thumb(3), index(4), middle(4), ring(4), pinky(4)
-                    hand_data['skeleton'] += [hand.palm_position.x, hand.palm_position.y, hand.palm_position.z]
-                    hand_data['skeleton'] += [hand.arm.wrist_position.x, hand.arm.wrist_position.y, hand.arm.wrist_position.z]
-                    for finger in hand.fingers:
-                        # Get bones
-                        for b in range(0, 4):
-                            bone = finger.bone(b)
-                            # hand_data['skeleton'] += [bone.prev_joint.x, bone.prev_joint.y, bone.prev_joint.z]
-                            joint = (bone.prev_joint + bone.next_joint) / 2
-                            hand_data['skeleton'] += [joint.x, joint.y, joint.z]
-                            # add the outer joint of the last bone
-                            # if b == 3:
-                            #     hand_data['skeleton'] += [bone.next_joint.x, bone.next_joint.y, bone.next_joint.z]
-
-                    # print(len(hand_data['skeleton']))
-                    recorded_data[frame_id]['hands'].append(hand_data)
-                frame_id += 1
+                        # print(len(hand_data['skeleton']))
+                        recorded_data[frame_id]['hands'].append(hand_data)
+                    frame_id += 1
   
 
+        # keyboard input for recording
         key = cv2.waitKey(1)
         if key == ord('q'):
             print('Start recording')
@@ -175,6 +176,7 @@ def run(controller):
                 for frame in recorded_frames:
                     vid.write(frame)
                 vid.release()
+
             elif gesture in STATIC_GESTURES:
                 out = os.path.join(out_dir, gesture)
                 if not os.path.exists(out):
@@ -182,12 +184,17 @@ def run(controller):
                 
                 last_idx = len(os.listdir(out))
                 os.mkdir(f'{out}/{last_idx}')
-                # save skeleton json file
+                # save data file and images
+                saved_data = {}
+                for frame_id in recorded_data:
+                    if frame_id % 10 == 0:
+                        saved_data[frame_id] = recorded_data[frame_id]
+                        # save image
+                        cv2.imwrite(f'{out}/{last_idx}/sample_image_{frame_id}.png', recorded_frames[frame_id])
+
                 with open(f'{out}/{last_idx}/data.json', 'w') as f:
-                    json.dump(recorded_data, f)
-                # save a sample image
-                for i in range(0,100,10):
-                    cv2.imwrite(f'{out}/{last_idx}/sample_image_{i}.png', recorded_frames[i])
+                    json.dump(saved_data, f)
+
 
         elif key == ord('x'):
             break
