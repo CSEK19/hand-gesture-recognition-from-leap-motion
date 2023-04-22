@@ -4,15 +4,13 @@ import math
 POSES = ['palm', 'fist', 'stop', 'left', 'right', 'up', 'down', 'rotate', 'thumb_in', 'negative']
 GESTURES = ['close fist', 'move left', 'move right', 'move up', 'move down', 'rotate', 'stop', 'thumb_in', 'negative']
 START_END_MATCHES_LABEL = {
-  'move down': [['palm', 'down'], ['stop', 'down']],
-  'move up': [['palm','up'], ['stop', 'up']],
-  'move left': [['palm','left'], ['stop', 'left']],
-  'move right': [['palm', 'right'], ['stop', 'right']],
-  'close fist': [['palm', 'fist'], ['palm', 'hook', 'fist']],
-  'rotate right': [['palm', 'palm_l', 'palm_u']],
-  'rotate left': [['palm', 'palm_r', 'palm_u']],
-  'stop': [['palm', 'stop']],
-  'thumb in': [['palm', 'thumb_in'], ['stop', 'thumb_in']]
+  'move down': [['palm', 'down']],
+  'move up': [['palm','up']],
+  'move left': [['palm','left']],
+  'move right': [['palm', 'right']],
+  'close fist': [['palm', 'fist']],
+  'rotate right': [['palm', 'palm_l']],
+  'rotate left': [['palm', 'palm_r']]
   }
 
 # START_END_MATCHES = {}
@@ -70,33 +68,36 @@ class HandGestureRecognizer:
 
   def detect_pose(self, feature, thres=0.5):
     yaw, pitch, roll, handedness = feature[-4:]
+    
     # feature vector X
     # X = np.array(feature).reshape(1,-1)
     pose, score = self.classifier.predict_proba(feature)
     # pose_idx = np.argmax(pred)
     # score = np.max(pred)
 
-    if score < thres or pose == "negative":
-      return "negative"
-    
-    # heuristic check for the directional poses
-    yaw, pitch, roll, handedness == feature[-4:]
-    yaw = self.to_degree(yaw)
-    pitch = self.to_degree(pitch)
-    roll = self.to_degree(roll)
+    if pose == "palm":
+      # heuristic check for the directional poses
+      yaw = self.to_degree(yaw)
+      pitch = self.to_degree(pitch)
+      roll = self.to_degree(roll)
 
-    # print(yaw, pitch, roll, handedness)
-    
-    if pose == "left" and yaw > -20.0:
-      return "negative"
-    elif pose == "right" and yaw < 20.0:
-      return "negative"
-    elif pose == "up" and pitch < 20.0:
-      return "negative"
-    elif pose == "down" and pitch > -25.0:
-      return "negative"
+      if (yaw <= -20.0 and handedness == 0) or (yaw <= -15.0 and handedness == 1):
+        return "left"
+      elif (yaw >= 15.0 and handedness == 0) or (yaw >= 20.0 and handedness == 1):
+        return "right"
+      elif pitch >= 20.0:
+        return "up"
+      elif pitch <= -25.0:
+        return "down"
+      elif roll >= 110.0 and handedness == 0 :
+        return "palm_r"
+      elif roll <= -110.0 and handedness == 1:
+        return "palm_l"
+      else:
+        return "palm"
 
-    return pose
+    else:
+      return "fist"
   
   def find_start_end_matches(self, lst_poses):
     # print(lst_poses)

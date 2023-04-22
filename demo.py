@@ -9,7 +9,7 @@
 import Leap, sys, _thread, time
 import LeapPython
 import Leap
-from model import StaticHandPoseClassifier, HandGestureRecognizer
+from model_heuristic import StaticHandPoseClassifier, HandGestureRecognizer
 from utils import Visualizer
 import cv2
 import pyautogui
@@ -37,30 +37,8 @@ def extract_feature(frame):
   feature += [yaw, pitch, roll, handedness]
   return feature
 
-# def extract_feature(frame):
-#   hand = frame.hands[0]
-#   feature = []
-#   # extract skeleton: palm, wrist, thumb(3), index(4), middle(4), ring(4), pinky(4)
-#   feature += [hand.palm_position.x, hand.palm_position.y, hand.palm_position.z]
-#   feature += [hand.arm.wrist_position.x, hand.arm.wrist_position.y, hand.arm.wrist_position.z]
-#   # handedness, yaw, pitch, roll
-#   handedness = 0 if hand.is_left else 1
-#   yaw, pitch, roll = hand.direction.yaw, hand.direction.pitch, hand.palm_normal.roll
-
-#   # add fingers' skeleton
-#   for finger in hand.fingers:
-#     # Get bones
-#     for b in range(0, 4):
-#       bone = finger.bone(b)
-#       # hand_data['skeleton'] += [bone.prev_joint.x, bone.prev_joint.y, bone.prev_joint.z]
-#       joint = (bone.prev_joint + bone.next_joint) / 2
-#       feature += [joint.x, joint.y, joint.z]
-
-#   feature += [yaw, pitch, roll, handedness]
-#   return feature
-
-static_model_weight = 'model\\weights\\SVC_weights_2004.pkl'
-scaler_weight = 'model\\weights\\scaler_weights_2004.pkl'
+static_model_weight = 'model\\weights\\SVC_weights_palmfist_2204.pkl'
+scaler_weight = 'model\\weights\\stdscaler_weights_palmfist_2204.pkl'
 
 def game_control(gesture):
   if gesture == "move left":

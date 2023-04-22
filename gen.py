@@ -15,22 +15,27 @@ def fast_scandir(dirname):
     return subfolders
 
 
-fast_scandir("data_collection/LeapDatav4")
+fast_scandir("data_collection/LeapDatav4_test")
 # print(lst_json_file)
+# lst_gesture = {
+#     'palm' : 0,
+#     'left': 1,
+#     'right': 2,
+#     'up': 3,
+#     'down': 4,
+#     'palm_left': 5,
+#     'palm_right': 6,
+#     'palm_up': 7,
+#     'fist': 8,
+#     'hook': 9,
+#     'stop': 10,
+#     'thumb_in': 11,
+#     'negative': 12
+# }
+
 lst_gesture = {
-    'palm' : 0,
-    'left': 1,
-    'right': 2,
-    'up': 3,
-    'down': 4,
-    'palm_left': 5,
-    'palm_right': 6,
-    'palm_up': 7,
-    'fist': 8,
-    'hook': 9,
-    'stop': 10,
-    'thumb_in': 11,
-    'negative': 12
+    'palm': 0,
+    'fist': 1
 }
 
 lst_d_gesture = {
@@ -89,6 +94,8 @@ for json_file in lst_json_file:
 
             arr_data_dynamic.append([arr_tmp, d_gesture, path_traceback])
         else:
+            if third_last_dir not in lst_gesture:
+                continue
             getsture = lst_gesture[third_last_dir]
             for x in data:
                 if(len(data[x]["hands"])):
@@ -111,8 +118,8 @@ for json_file in lst_json_file:
 array_data_x = np.array(arr_data)
 array_data_y = np.array(arr_name)
 
-with open("pose_data_2004.pkl", "wb") as f:
+with open("data_collection/pose_data_palm_fist_2204_test.pkl", "wb") as f:
   pickle.dump([array_data_x, array_data_y], f)
 
-with open("gesture_data_2004.pkl", "wb") as f:
-  pickle.dump(arr_data_dynamic, f)
+# with open("gesture_data_2204.pkl", "wb") as f:
+#   pickle.dump(arr_data_dynamic, f)
