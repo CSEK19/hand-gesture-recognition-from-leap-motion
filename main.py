@@ -15,6 +15,7 @@ import cv2
 import pyautogui
 # from pywinauto.keyboard import send_keys
 import keyboard
+import glob, os, json
 
 def extract_feature(frame):
   hand = frame.hands[0]
@@ -73,16 +74,23 @@ def run_HGR():
   # init hand gesture recognizer and visualizer
   static_model_weight = 'model\\weights\\SVC_weights_palmfist_2204.pkl'
   scaler_weight = 'model\\weights\\stdscaler_weights_palmfist_2204.pkl'
-  # vis = Visualizer()
+  vis = Visualizer()
   static_classifier = StaticHandPoseClassifier(static_model_weight, scaler_weight)
   recognizer = HandGestureRecognizer(static_classifier)
+  
+  recorded_frames = []
+  recorded_data = []
+  frame_cnt = 0
+  out = 'sth'
+  if not os.path.exists(out):
+      os.makedirs(out)
 
   while True:
-
     frame = controller.frame()
     image = frame.images[0]
 
     if image.is_valid:
+      hand_feature = []
       display = None
       if not frame.hands.is_empty:
         # make detection
@@ -93,8 +101,33 @@ def run_HGR():
           display = gesture
           game_control(gesture)
 
+        # record
+        recorded_frames.append(vis.visualize(frame.images))
+        recorded_data.append(hand_feature)
+        frame_cnt += 1
+
+        # save every frame_cnt
+        if frame_cnt == 600:
+          assert len(recorded_frames) == len(recorded_data)
+          frame_cnt = 0
+          last_idx = len(glob.glob(f'{out}/*.mp4'))
+          # save json file
+          with open(f'{out}/{last_idx}.json', 'w') as f:
+            json.dump(recorded_data, f)
+          # save clip
+          vid = cv2.VideoWriter(f'{out}/{last_idx}.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 60, (400, 400), 0)
+          for frame in recorded_frames:
+            vid.write(frame)
+          vid.release()
+          # empty the recorded
+          recorded_frames = []
+          recorded_data = []
+
+
+
       # visualize
       # vis_img = vis.visualize(frame.images, display)
+
       # cv2.imshow('LeapDemo', vis_img)
       # if cv2.waitKey(1) == ord('q'):
       #   break
