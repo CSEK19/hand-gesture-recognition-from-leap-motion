@@ -70,7 +70,7 @@ def run_HGR():
   # init leap controller
   controller = Leap.Controller()
   controller.set_policy_flags(Leap.Controller.POLICY_IMAGES)
-  
+  record = True
   # init hand gesture recognizer and visualizer
   static_model_weight = 'model\\weights\\SVC_weights_palmfist_2204.pkl'
   scaler_weight = 'model\\weights\\stdscaler_weights_palmfist_2204.pkl'
@@ -106,8 +106,11 @@ def run_HGR():
         recorded_data.append(hand_feature)
         frame_cnt += 1
 
-        # save every frame_cnt
-        if frame_cnt == 600:
+
+        # save every fra
+        # me_cnt
+        if frame_cnt == 50000 or keyboard.is_pressed("a"):
+          print("Start recording ...")
           assert len(recorded_frames) == len(recorded_data)
           frame_cnt = 0
           last_idx = len(glob.glob(f'{out}/*.mp4'))
@@ -122,6 +125,7 @@ def run_HGR():
           # empty the recorded
           recorded_frames = []
           recorded_data = []
+          print("End recording ...")
 
 
 

@@ -80,8 +80,8 @@ STATIC_GESTURES = ['palm', 'palm_left', 'palm_right', 'palm_up', 'up', 'down', '
 def run(controller):
     maps_initialized = False
 
-    out_dir = 'data_collection/LeapDatav4/Xuan'
-    dynamic = True
+    out_dir = 'data_collection/LeapDatav4/Mom'
+    dynamic = False
     recording = False
     stop_flag = False
 

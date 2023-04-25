@@ -1,44 +1,27 @@
 import numpy as np
-import os, json
+import os, json, glob
 import pickle
+import matplotlib.pyplot as plt
+import random
 
-lst_json_file = []
-
-def fast_scandir(dirname):
-    subfolders= [f.path for f in os.scandir(dirname) if f.is_dir()]
-    if not subfolders:
-        for file in os.listdir(dirname):
-            if file.endswith('.json'):
-                lst_json_file.append(f"{dirname}\\{file}")
-    for dirname in list(subfolders):
-        subfolders.extend(fast_scandir(dirname))
-    return subfolders
-
-
-fast_scandir("data_collection/LeapDatav4_test")
-# print(lst_json_file)
-# lst_gesture = {
-#     'palm' : 0,
-#     'left': 1,
-#     'right': 2,
-#     'up': 3,
-#     'down': 4,
-#     'palm_left': 5,
-#     'palm_right': 6,
-#     'palm_up': 7,
-#     'fist': 8,
-#     'hook': 9,
-#     'stop': 10,
-#     'thumb_in': 11,
-#     'negative': 12
-# }
-
-lst_gesture = {
-    'palm': 0,
-    'fist': 1
+poses = ['palm', 'left', 'right',  'up', 'down', 'palm_left', 'palm_right', 'palm_up', 'fist', 'hook', 'stop', 'thumb_in']
+gestures = ['d_fist', 'd_left', 'd_right', 'd_up', 'd_down', 'd_rotate_left', 'd_rotate_right', 'd_stop', 'd_thumb', 'd_negative']
+pose_map = {
+    'palm' : 0,
+    'left': 1,
+    'right': 2,
+    'up': 3,
+    'down': 4,
+    'palm_left': 5,
+    'palm_right': 6,
+    'palm_up': 7,
+    'fist': 8,
+    'hook': 9,
+    'stop': 10,
+    'thumb_in': 11,
+    'negative': 12
 }
-
-lst_d_gesture = {
+gesture_map = {
     'd_fist' : 0,
     'd_left' : 1,
     'd_right': 2,
@@ -51,56 +34,30 @@ lst_d_gesture = {
     'd_negative': 9,
 }
 
-dynamic_prefix = "d_"
-arr_data = []
-arr_name = []
-arr_data_dynamic = []
+data_folder = 'data_collection/LeapDatav4'
+train_subjects = ['Khang', 'Phat', 'Sang', 'Xuan']
+test_subjects = ['PhatLe', 'Mom']
 
-# print(lst_json_file[0])
-for json_file in lst_json_file:
-    path = json_file
+pose_data_train = []
+pose_data_test = []
+gesture_data = []
 
-    dir_list = path.split('\\')
-    path_traceback = path.rsplit('\\', 1)[0] + '\\video.mp4'
-    third_last_dir = dir_list[-3]
-    with open(path) as json_file:
-        data = json.load(json_file)
 
-        # For dynamic gesture
-        if dynamic_prefix in third_last_dir:
-            d_gesture= lst_d_gesture[third_last_dir]
-            arr_tmp = []
-            for x in data:  
-                if(len(data[x]["hands"])):
-                    if len(data[x]["hands"]) > 1:
-                        print(path)
-                        print(data[x]["hands"][0]["palm"])
-                        print(data[x]["hands"][1]["palm"])
-                        continue
-                    palm = data[x]["hands"][0]["palm"]
-                    thumb = data[x]["hands"][0]["thumb"]
-                    index = data[x]["hands"][0]["index"]
-                    middle = data[x]["hands"][0]["middle"]
-                    ring = data[x]["hands"][0]["ring"]
-                    pinky = data[x]["hands"][0]["pinky"]
-                    yaw = data[x]["hands"][0]["yaw"]
-                    pitch = data[x]["hands"][0]["pitch"]
-                    roll = data[x]["hands"][0]["roll"]
-                    handedness = 0 if data[x]["hands"][0]["handedness"] == 'left' else 1
-                    raw_data_lst = palm + thumb + index + middle + ring + pinky + [yaw, pitch, roll, handedness]
-                    arr_tmp.append(raw_data_lst)
-                else:
-                    arr_tmp.append([])
+for samples_path in glob.glob(f'{data_folder}\\*\\*'):
+    # extract path 
+    _, subject, label = samples_path.split('\\')
 
-            arr_data_dynamic.append([arr_tmp, d_gesture, path_traceback])
-        else:
-            if third_last_dir not in lst_gesture:
-                continue
-            getsture = lst_gesture[third_last_dir]
+    # process pose data for each class performed by each user
+    if label in poses:
+        samples = []
+        for json_path in glob.glob(f"{samples_path}\\*\\*.json"):
+            path_traceback = json_path.rsplit('\\', 1)[0] + '\\video.mp4'
+            # load json file
+            with open(json_path) as json_file:
+                data = json.load(json_file)
+            pose_idx = pose_map[label]
             for x in data:
-                if(len(data[x]["hands"])):
-                    # print('hehe')
-                    assert len(data[x]["hands"]) == 1
+                if len(data[x]["hands"]) == 1:
                     palm = data[x]["hands"][0]["palm"]
                     thumb = data[x]["hands"][0]["thumb"]
                     index = data[x]["hands"][0]["index"]
@@ -112,14 +69,85 @@ for json_file in lst_json_file:
                     roll = data[x]["hands"][0]["roll"]
                     handedness = 0 if data[x]["hands"][0]["handedness"] == 'left' else 1
                     raw_data_lst = palm + thumb + index + middle + ring + pinky + [yaw, pitch, roll, handedness]
-                    arr_data.append(raw_data_lst)
-                    arr_name.append(getsture)
+                    
+                    samples.append([raw_data_lst, pose_idx])
 
-array_data_x = np.array(arr_data)
-array_data_y = np.array(arr_name)
+        # sample the data to avoid imbalance
+        if len(samples) > 60:
+            samples = random.sample(samples, 60)
+        if subject in train_subjects:
+            pose_data_train += samples
+        elif subject in test_subjects:
+            pose_data_test += samples
+    
+    # process gesture data
+    elif label in gestures:
+        for json_path in glob.glob(f"{samples_path}\\*\\*.json"):
+            path_traceback = json_path.rsplit('\\', 1)[0] + '\\video.mp4'
+            # load json file
+            with open(json_path) as json_file:
+                data = json.load(json_file)
 
-with open("data_collection/pose_data_palm_fist_2204_test.pkl", "wb") as f:
-  pickle.dump([array_data_x, array_data_y], f)
+            gesture_idx = gesture_map[label]
+            samples = []
+            for x in data:
+                if len(data[x]["hands"]) == 1:
+                    palm = data[x]["hands"][0]["palm"]
+                    thumb = data[x]["hands"][0]["thumb"]
+                    index = data[x]["hands"][0]["index"]
+                    middle = data[x]["hands"][0]["middle"]
+                    ring = data[x]["hands"][0]["ring"]
+                    pinky = data[x]["hands"][0]["pinky"]
+                    yaw = data[x]["hands"][0]["yaw"]
+                    pitch = data[x]["hands"][0]["pitch"]
+                    roll = data[x]["hands"][0]["roll"]
+                    handedness = 0 if data[x]["hands"][0]["handedness"] == 'left' else 1
+                    raw_data_lst = palm + thumb + index + middle + ring + pinky + [yaw, pitch, roll, handedness]
+                    samples.append(raw_data_lst)
+                else:
+                    samples.append([])
 
-# with open("gesture_data_2204.pkl", "wb") as f:
-#   pickle.dump(arr_data_dynamic, f)
+            gesture_data.append([samples, gesture_idx, path_traceback])
+
+
+with open("data_collection/array_data_2504/pose_data_train_2504.pkl", "wb") as f:
+  pickle.dump(pose_data_train, f)
+
+with open("data_collection/array_data_2504/pose_data_test_2504.pkl", "wb") as f:
+  pickle.dump(pose_data_test, f)
+
+with open("data_collection/array_data_2504/gesture_data_2504.pkl", "wb") as f:
+  pickle.dump(gesture_data, f)
+
+# Histogram for pose training set
+_, pose_counts = np.unique([x[1] for x in pose_data_train], return_counts=True)
+print(pose_counts)
+
+fig, ax = plt.subplots(1, 1, figsize=(10,7))
+ax.bar(poses, pose_counts, align='center')
+ax.set_title("Pose training set distribution")
+ax.set_xlabel("Pose name")
+ax.set_ylabel("Number of samples")
+plt.show()
+
+# Histogram for pose test set
+_, pose_counts = np.unique([x[1] for x in pose_data_test], return_counts=True)
+print(pose_counts)
+
+fig, ax = plt.subplots(1, 1, figsize=(10,7))
+ax.bar(poses, pose_counts, align='center')
+ax.set_title("Pose test set distribution")
+ax.set_xlabel("Pose name")
+ax.set_ylabel("Number of samples")
+plt.show()
+
+# Histogram for gesture data
+_, gesture_counts = np.unique([x[1] for x in gesture_data], return_counts=True)
+print(gesture_counts)
+
+fig, ax = plt.subplots(1, 1, figsize=(10,7))
+ax.bar(gestures, gesture_counts, align='center')
+ax.set_title("Gesture dataset distribution")
+ax.set_xlabel("Gesture name")
+ax.set_ylabel("Number of samples")
+plt.show()
