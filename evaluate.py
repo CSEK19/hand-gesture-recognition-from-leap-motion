@@ -1,169 +1,211 @@
 import pickle
 import numpy as np
-from model import StaticHandPoseClassifier
+from model import StaticHandPoseClassifier, HandGestureRecognizer
 from tqdm import tqdm
 import logging
 import cv2
 import os
 import math
+import pandas as pd
+import time
+from sklearn.metrics import confusion_matrix, accuracy_score
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-logger = logging.getLogger('')
-logger.setLevel(logging.DEBUG)
-file_handler = logging.FileHandler('evaluate.log', mode='w')
-file_handler.setLevel(logging.DEBUG)
-file_formatter = logging.Formatter(
-    '%(asctime)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(file_formatter)
-logger.addHandler(file_handler)
+GESTURES = ['close fist', 'move left', 'move right', 'move up', 'move down', 'rotate left', 'rotate right', 'stop', 'thumb in', 'negative']
 
-poses = ['palm', 'fist', 'stop', 'thumb_in', 'left', 'right', 'up', 'down', 'rotate']
-gestures = ['close fist', 'move left', 'move right', 'move up', 'move down', 'rotate', 'stop', 'thumb_in', 'negative']
-start_end_label_matches = {'move down': ['palm', 'down'], \
-                            'move up': ['palm','up'], \
-                            'move left': ['palm','left'], \
-                            'move right': ['palm', 'right'], \
-                            'close fist': ['palm', 'fist'], \
-                            'rotate': ['palm', 'rotate'], \
-                            'stop': ['palm', 'stop'], \
-                            'thumb_in': ['palm', 'thumb_in']}
-
-start_end_matches = {}
-for gesture in start_end_label_matches:
-    gesture_id = gestures.index(gesture)
-    start_end_matches[gesture_id] = []
-    [start_end_matches[gesture_id].append(poses.index(x)) for x in start_end_label_matches[gesture]]
-
-
-def detect_gesture(prev_pose_id, pose_id, start_end_matches):
-    # prev_pose_id: the previous pose
-    # pose_id: the newly detected pose
-    # start_end_matches: dict of start pose and end pose pairs to match dynamic gestures
-    for gesture_id in start_end_matches:
-        pair = start_end_matches[gesture_id]
-        if pair[0] == prev_pose_id and pair[1] == pose_id:
-            return gesture_id
-    return -1
-
-
-def detect_pose(feature, detector, thres=0.5):
-  yaw, pitch, roll, handedness = feature[-4:]
-  # feature vector X
-  X = np.array(feature).reshape(1,-1)
-  pred = detector.predict_proba(X)[0]
-  pose_idx = np.argmax(pred)
-  score = np.max(pred)
-
-  # X = np.array(feature).reshape(1,-1)
-  # pose_idx = detector.predict(X)[0]
-  # score = 0.5
-
-  if score < thres:
-    return -1
-
-  if poses[pose_idx] == "palm":
-    if yaw >= math.pi/6:
-      return poses.index("right")
-    elif yaw <= -math.pi/6:
-      return poses.index("left")
-    else:
-      if pitch >= math.pi/6:
-        return poses.index("up")
-      elif pitch <= -math.pi/6:
-        return poses.index("down")
-      else:
-        if (handedness == 1 and roll <= -math.pi/2) or (handedness == 0 and roll >= math.pi/2):
-          return poses.index("rotate")
-        else:
-          return pose_idx
-  
-  elif poses[pose_idx] == "fist":
-    return pose_idx
-  elif poses[pose_idx] == "stop":
-    if (handedness == 1 and (-math.pi/6)) >= roll or (handedness == 0 and (math.pi/6) <= roll):
-      return -1
-    return pose_idx
-  elif poses[pose_idx] == "thumb_in":
-    return pose_idx
-  
-  return -1
-
-def debug(path, preds):
-  src_path = path
-  vid = cv2.VideoCapture(src_path)
+def debug(path, X, recognizer, static_classifier):
+  vid = cv2.VideoCapture(path + '/video.mp4')
   out = 'Debug/' + path
   if not os.path.exists(out):
     os.makedirs(out)
 
-  out_vid = cv2.VideoWriter(f'{out}/video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 20, (400, 400), 0)
-  # print(len(preds), src_path, vid.get(cv2.CAP_PROP_FRAME_COUNT))
-  assert len(preds) == vid.get(cv2.CAP_PROP_FRAME_COUNT)
-  for pose_id in preds:
+  recognizer.clear_buffer()
+
+  debug_vid = cv2.VideoWriter(f'{out}/video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 20, (400, 400), 0)
+  for hand_feature in X:
     _, vis_img = vid.read()
     vis_img = cv2.cvtColor(vis_img, cv2.COLOR_BGR2GRAY)
-    if pose_id != '?':
-      vis_img = cv2.putText(vis_img, f'{poses[pose_id]}', (100,150), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,0,0), 1, cv2.LINE_AA)
-    out_vid.write(vis_img)
-  out_vid.release()
+    # detect
+    if hand_feature != []:
+      yaw, pitch, roll, _ = hand_feature[-4:]
+      yaw = int((yaw * 180) / math.pi)
+      pitch = int((pitch * 180) / math.pi)
+      roll = int((roll * 180) / math.pi)
 
-def predict(X, detector):
-  predictions = []
-  pose_preds = []
+      gesture = recognizer.detect(hand_feature)
+      pose, score = recognizer.detect_pose(hand_feature, heuristic=True, thres=0.45)
+      pose_class, score_class = static_classifier.predict_proba(hand_feature)
 
-  prev_pose_id, pose_id = -1, -1
-  # X: list of skeletons of a video clip
-  
-  for skeleton in X:
-    if len(skeleton) == 0:
+      vis_img = cv2.putText(vis_img, f'{gesture}', (100,100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
+      vis_img = cv2.putText(vis_img, f'{pose}:{score}', (100,125), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
+      vis_img = cv2.putText(vis_img, f'{pose_class}:{score_class}', (100,150), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
+      vis_img = cv2.putText(vis_img, f'{yaw},{pitch},{roll}', (100,175), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
+    debug_vid.write(vis_img)
+
+  debug_vid.release()
+
+def predict(X, recognizer):
+  elapse_times = 0
+  n_frames = 0
+
+  recognizer.clear_buffer()
+  pred = []
+  for hand_feature in X:
+    # no hand detected, skip
+    if len(hand_feature) == 0:
       continue
 
-    # Make detection
-    pose_id = detect_pose(skeleton, detector)
-    pose_preds.append(pose_id)
-    # print(pose_id)
-    if pose_id != -1:
-      # print(prev_pose_id, pose_id)
-      gesture_id = detect_gesture(prev_pose_id, pose_id, start_end_matches)
-      if gesture_id != -1:
-        predictions.append(gesture_id)
+    n_frames += 1
+    start = time.perf_counter()
+    gesture = recognizer.detect(hand_feature, heuristic=False)
+    end = time.perf_counter()
+    elapse_times += (end-start)
 
-      prev_pose_id = pose_id
+    if gesture != "negative":
+      pred.append(gesture)
 
-  return predictions, pose_preds
+  # average alapse frame for each frame
+  elapse = elapse_times / n_frames
+  return pred, elapse
         
-
 
 def main():
   detections = {}
-  # init detector
-  detector = StaticHandPoseClassifier('weights\\MLPClassifier_0411.pkl', 'weights\\StandardScaler_0411.pkl')
+  correct = 0
 
-  # load evaluatation dataset
-  with open('array_dynamic_0404.pkl', 'rb') as f:
+  # for confusion matrix
+  y_true = []
+  y_pred = []
+  negative_idx = GESTURES.index('negative')
+  n = 0
+  for gesture in GESTURES:
+    detections[gesture] = {'TP': 0, 'FP': 0, 'FN': 0, 'n': 0}
+  # init hand gesture recognizer and visualizer
+  static_model_weight = 'model\\weights\\SVC_weights_0805.pkl'
+  scaler_weight = 'model\\weights\\scaler_weights_0805.pkl'
+  static_classifier = StaticHandPoseClassifier(static_model_weight, scaler_weight)
+  recognizer = HandGestureRecognizer(static_classifier)
+
+  # load evaluation dataset
+  with open('data_collection/array_data/gesture_data_v5.pkl', 'rb') as f:
     data = pickle.load(f)
 
-  len_data = len(data)
-  correct = 0
+  elapse_times = []
+  n_samples = len(data)
+
   for X, y, path in tqdm(data, position=0, leave=True):
-    if y not in detections:
-      detections[y] = {'correct': 0, 'cnt': 0}
-    detections[y]['cnt'] += 1
-    pred, pose_pred = predict(X, detector)
-    # print(pred)
-    # Predict only 1 correct gesture -> accurate
+    gesture = GESTURES[y]
+    if gesture != 'negative':
+      n += 1
+    detections[gesture]['n'] += 1
 
-    if (len(pred) == 0 and y == gestures.index('negative')) or (len(pred) == 1 and pred[0] == y):
-      detections[y]['correct'] += 1
-      correct += 1
-    # else: # debug
-    #   logger.info(f'{gestures[y]}, {path}: {[gestures[x] for x in pred]}')
-    #   debug(path, pose_pred)
+    # make prediction on the video
+    pred, elapse = predict(X, recognizer)
 
-  print(f'Accuracy: {correct/len_data}')
-  for y in detections:
-    name = gestures[y]
-    correct, cnt = detections[y]["correct"], detections[y]["cnt"]
-    print(f'{name}: {correct}/{cnt}')
+    elapse_times.append(elapse)
 
+    wrong = False
+    # If any prediction is made in negative samples, add FP for each class
+    if gesture == 'negative':
+      if len(pred) == 0:
+        # for cf matrix
+        y_true.append(negative_idx)
+        y_pred.append(negative_idx)
+      else:
+        for p in pred:
+          wrong = True
+          detections[p]['FP'] += 1
+          # for cf matrix
+          y_true.append(negative_idx)
+          y_pred.append(GESTURES.index(p))
+    # If the ground truth is not negative class, update TP, FP, FN
+
+    else:
+      ges_found = False
+      for p in pred:
+        y_pred.append(GESTURES.index(p))
+        if p == gesture and not ges_found:
+          ges_found = True
+          correct += 1
+          detections[p]['TP'] += 1
+          # for cf matrix
+          y_true.append(y)
+        else:
+          detections[p]['FP'] += 1
+          wrong = True
+          # for cf matrix
+          y_true.append(negative_idx)
+      # if there is no gesture found, add FN
+      if not ges_found:
+        detections[gesture]['FN'] += 1
+        wrong = True
+        # for cf matrix
+        y_true.append(y)
+        y_pred.append(negative_idx)
+
+
+    if wrong: # debug if there are any wrong cases
+      debug(path, X, recognizer, static_classifier)
+
+  overall_acc = accuracy_score(y_true, y_pred)
+  print(f'Overall accuracy: {overall_acc}')
+
+  # Precision and recall for each class
+  precisions = []
+  recalls = []
+  f1_scores = []
+  weighted_sum_precisions = 0.0
+  weighted_sum_recalls = 0.0
+  weighted_sum_f1_scores = 0.0
+
+  for gesture in GESTURES[:-1]:
+    # calculate precision, recall and f1 score
+    TP, FP, FN = detections[gesture]["TP"], detections[gesture]["FP"], detections[gesture]["FN"]
+    precision = TP/(TP+FP)
+    recall = TP/(TP+FN)
+    f1_score = (2*precision*recall)/(precision+recall)
+
+    # update weighted sum
+    weight = detections[gesture]['n']/n
+    weighted_sum_precisions += weight * precision
+    weighted_sum_recalls += weight * recall
+    weighted_sum_f1_scores += weight * f1_score
+
+    # update precision and recall list
+    precisions.append(precision)
+    recalls.append(recall)
+    f1_scores.append(f1_score)
+
+
+  # append weighted average result
+  precisions.append(weighted_sum_precisions)
+  recalls.append(weighted_sum_recalls)
+  f1_scores.append(weighted_sum_f1_scores)
+  name = GESTURES[:-1] + ['Weighted average']
+
+  # display result table
+  df = pd.DataFrame({'Gesture': name, 'Precision': precisions, 'Recall': recalls, 'F1 score': f1_scores})
+  # df.to_csv('gesture_evaluation.csv')
+  print(df)
+
+  print('Average elapse time for each frame in the whole dataset:', sum(elapse_times)/n_samples)
+
+  # cf matrix:
+  cf_matrix = confusion_matrix(y_true, y_pred)
+  cf_matrix_norm = np.around(cf_matrix / cf_matrix.sum(axis=1)[:,None], 2)
+  sns.set(font_scale=1.5)
+  sns.set(rc={"figure.figsize":(15, 15)})
+  ax = sns.heatmap(cf_matrix_norm, annot=True, cmap='Blues')
+  ax.set_title(f'Confusion matrix, accuracy: {round(overall_acc * 100, 2)}%', fontsize=20)
+  ax.set_xlabel('\nPredicted Values', fontsize=20)
+  ax.set_ylabel('Actual Values', fontsize=20)
+
+  gesture_display = ['close\nfist  ','move\nleft  ','move\nright ','move\nup    ','move\ndown','rotate\nleft   ','rotate\nright  ','stop','thumb\nin      ', 'negative']
+  ax.xaxis.set_ticklabels(gesture_display, fontsize=15)
+  ax.yaxis.set_ticklabels(gesture_display, fontsize=15)
+  plt.show()
+  # plt.savefig("D:\\bachkhoa\\bachkhoa222\\Luan van\\images\\training_result\\gesture_cf_matrix.pdf", format="pdf", bbox_inches="tight")
 
 if __name__ == "__main__":
   main()

@@ -2,17 +2,17 @@ import numpy as np
 import math
 
 POSES = ['palm', 'fist', 'stop', 'left', 'right', 'up', 'down', 'rotate', 'thumb_in', 'negative']
-GESTURES = ['close fist', 'move left', 'move right', 'move up', 'move down', 'rotate', 'stop', 'thumb_in', 'negative']
+GESTURES = ['close fist', 'move left', 'move right', 'move up', 'move down', 'rotate left', 'rotate right', 'stop', 'thumb in', 'negative']
 START_END_MATCHES_LABEL = {
   'move down': [['palm', 'down'], ['stop', 'down']],
   'move up': [['palm','up'], ['stop', 'up']],
   'move left': [['palm','left'], ['stop', 'left']],
   'move right': [['palm', 'right'], ['stop', 'right']],
-  'close fist': [['palm', 'fist'], ['palm', 'hook', 'fist']],
-  'rotate right': [['palm', 'palm_l', 'palm_u']],
-  'rotate left': [['palm', 'palm_r', 'palm_u']],
-  'stop': [['palm', 'stop']],
-  'thumb in': [['palm', 'thumb_in'], ['stop', 'thumb_in']]
+  'close fist': [['hook', 'fist'], ['thumb_in', 'fist'], ['thumb_in', 'hook', 'fist'], ['hook', 'thumb_in', 'fist']],
+  'rotate right': [['palm', 'palm_l', 'palm_u'], ['stop', 'palm_l', 'palm_u'], ['up', 'palm_l', 'palm_u']],
+  'rotate left': [['palm', 'palm_r', 'palm_u'], ['stop', 'palm_r', 'palm_u'], ['up', 'palm_r', 'palm_u']],
+  'stop': [['palm', 'stop', 'palm']],
+  'thumb in': [['palm', 'thumb_in', 'palm'], ['palm', 'thumb_in', 'stop'], ['stop', 'thumb_in', 'palm'], ['stop', 'thumb_in', 'stop']]
   }
 
 # START_END_MATCHES = {}
@@ -28,16 +28,16 @@ class HandGestureRecognizer:
     self.classifier = pose_classifier
     self.buffer = []
 
-  def detect(self, feature):
+  def detect(self, feature, heuristic=False, thres=0.45):
     # Make detection
-    pose = self.detect_pose(feature)
+    pose, score = self.detect_pose(feature, heuristic, thres)
     
     # detect dynamic gesture if the static pose is not negative
     if pose != "negative":
       gesture = self.detect_gesture(pose)
       # print result if key poses matched
       if gesture != "negative":
-        print(gesture)
+        # print(gesture)
         return gesture
 
 
@@ -56,7 +56,7 @@ class HandGestureRecognizer:
     
     # find match for key pose sequences
     self.buffer.append(pose)
-    matched_gesture = self.find_start_end_matches(self.buffer[-3:])
+    matched_gesture = self.find_start_end_matches(self.buffer[-4:])
     # if find a match, empty buffer and return the gesture name
     if matched_gesture != -1:
       self.buffer = []
@@ -68,7 +68,7 @@ class HandGestureRecognizer:
   def to_degree(self, rad):
     return (rad * 180) / math.pi
 
-  def detect_pose(self, feature, thres=0.5):
+  def detect_pose(self, feature, heuristic, thres):
     yaw, pitch, roll, handedness = feature[-4:]
     # feature vector X
     # X = np.array(feature).reshape(1,-1)
@@ -76,28 +76,48 @@ class HandGestureRecognizer:
     # pose_idx = np.argmax(pred)
     # score = np.max(pred)
 
-    if score < thres or pose == "negative":
-      return "negative"
+    # score check specifically for thumbin
+    if pose == "thumb_in" and score < 0.75:
+      return "negative", 0
+
+    if score < thres:
+      return "negative", 0
     
     # heuristic check for the directional poses
-    yaw, pitch, roll, handedness == feature[-4:]
+    # yaw, pitch, roll, handedness = feature[-4:]
     yaw = self.to_degree(yaw)
     pitch = self.to_degree(pitch)
     roll = self.to_degree(roll)
 
-    # print(yaw, pitch, roll, handedness)
-    
-    if pose == "left" and yaw > -20.0:
-      return "negative"
-    elif pose == "right" and yaw < 20.0:
-      return "negative"
-    elif pose == "up" and pitch < 20.0:
-      return "negative"
-    elif pose == "down" and pitch > -25.0:
-      return "negative"
+    # rotate left right heuristic
+    if pose == "palm_l" and handedness == 1:
+      if roll < -90:
+        return "palm_u", 1
+      elif roll > -30:
+        return "palm", 1
 
-    return pose
+    elif pose == "palm_r" and handedness == 0:
+      if roll > 90:
+        return "palm_u", 1
+      elif roll < -30:
+        return "palm", 1
+
+    if heuristic:
+      if pose == "left" and yaw > -16.0:
+        return "palm", 1
+      elif pose == "right" and yaw < 16.0:
+        return "palm", 1
+      elif pose == "up" and pitch < 16.0:
+        return "palm", 1
+      elif pose == "down" and pitch > -22.0:
+        return "palm", 1
+
+
+    return pose, score
   
+  def clear_buffer(self):
+    self.buffer = []
+
   def find_start_end_matches(self, lst_poses):
     # print(lst_poses)
     matched_gesture = -1

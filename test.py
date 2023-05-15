@@ -12,43 +12,26 @@ import cv2, Leap, math, ctypes
 import numpy as np
 import os, glob, json
 from model import StaticHandPoseClassifier
-from visualize import convert_distortion_maps, undistort
+from utils import Visualizer
 import pickle
 import math
 
-poses = ['down', 'fist', 'left', 'up', 'palm', 'right', 'rotate','negative']
-gestures = ['move down', 'close fist', 'move left', 'move right', 'rotate', 'move up', 'negative']
-start_end_label_matches = {'move down': ['palm', 'down'], \
-                            'move up': ['palm','up'], \
-                            'move left': ['palm','left'], \
-                            'move right': ['palm', 'right'], \
-                            'close fist': ['palm', 'fist'], \
-                            'rotate': ['palm', 'rotate']}
 
-start_end_matches = {}
-for gesture in start_end_label_matches:
-    gesture_id = gestures.index(gesture)
-    start_end_matches[gesture_id] = []
-    [start_end_matches[gesture_id].append(poses.index(x)) for x in start_end_label_matches[gesture]]
+def angle(v1, v2):
+  unit_v1 = v1 / np.linalg.norm(v1)
+  unit_v2 = v2 / np.linalg.norm(v2)
+  dot_product = abs(np.dot(unit_v1, unit_v2))
+  angle = np.arccos(dot_product)
+  return angle
 
+def distance(x1, x2):
+    return math.sqrt((x1[0] - x2[0])**2 + (x1[1] - x2[1])**2 + (x1[2] - x2[2])**2)
 
-
+FINGERS = ["thumb", "index", "middle", "ring", "pinky"]
 def run(controller):
-    # for display purpose
-    n_frames_displayed = 30
-    display_cnt = 99999
-    # initialization
-    maps_initialized = False
-    negative_id = poses.index("negative")
-    prev_pose_id, pose_id = negative_id,negative_id # set the initial pose_ids to negative class
-    # to check pose count reach a minimum frame threshold or not
-    prev_tmp_pose = -1
-    min_frame_thres = 10
-    tmp_cnt = 0
-
-    gesture_id = -1
-    
+    vis = Visualizer()
     cnt = 0
+    idx= 0 
     while True:
         frame = controller.frame()
         image = frame.images[0]
@@ -57,47 +40,65 @@ def run(controller):
         if not image.is_valid:
             continue
 
-        if not maps_initialized:
-            left_coordinates, left_coefficients = convert_distortion_maps(frame.images[0])
-            right_coordinates, right_coefficients = convert_distortion_maps(frame.images[1])
-            maps_initialized = True
+        for hand in frame.hands:
+            hand_data = {}
+            hand_data['handedness'] = "Left" if hand.is_left else "Right"
+            hand_data['direction'] = [hand.direction.x, hand.direction.y, hand.direction.z]
+            hand_data['normal'] = [hand.palm_normal.x, hand.palm_normal.y, hand.palm_normal.z]
+            hand_data['roll'] = hand.palm_normal.roll
+            hand_data['pitch'] = hand.direction.pitch
+            hand_data['yaw'] = hand.direction.yaw
+            hand_data['wrist'] = [hand.arm.wrist_position.x, hand.arm.wrist_position.y, hand.arm.wrist_position.z]
 
-
-        vis_img = undistort(image, left_coordinates, left_coefficients, 400, 400)
-        # undistorted_right = undistort(image, right_coordinates, right_coefficients, 400, 400)
-
-        if not frame.hands.is_empty:
-            cnt += 1
-            hand = frame.hands[0]
-            skeleton = []
-            # extract skeleton: palm, wrist, thumb(3), index(4), middle(4), ring(4), pinky(4)
-            skeleton += [hand.palm_position.x, hand.palm_position.y, hand.palm_position.z]
-            skeleton += [hand.arm.wrist_position.x, hand.arm.wrist_position.y, hand.arm.wrist_position.z]
-            handedness = 0 if hand.is_left else 1
-
-            # add fingers' skeleton
-            for idx,finger in enumerate(hand.fingers):
+            # extract skeleton: palm, thumb(4), index(5), middle(5), ring(5), pinky(5)
+            hand_data['palm'] = [hand.palm_position.x, hand.palm_position.y, hand.palm_position.z]
+            palm = hand_data['palm']
+            for finger in hand.fingers:
+                # print(finger.id, finger.type)
+                hand_data[FINGERS[finger.type]] = []
                 # Get bones
                 for b in range(0, 4):
                     bone = finger.bone(b)
-                    # hand_data['skeleton'] += [bone.prev_joint.x, bone.prev_joint.y, bone.prev_joint.z]
-                    joint = (bone.prev_joint + bone.next_joint) / 2
-                    skeleton += [joint.x, joint.y, joint.z]
-                    if idx == 1 and b == 3:
-                        index_tip = [joint.x, joint.y, joint.z]
-                    elif idx == 2 and b == 3:
-                        middle_tip = [joint.x, joint.y, joint.z]
-
-            skeleton += [hand.direction.yaw, hand.direction.pitch, hand.direction.roll, handedness]
-            if cnt & 50 == 0:
-                # print(f"Yaw, pitch, roll: {hand.direction.yaw}, {hand.direction.pitch}, {hand.palm_normal.roll}")
-                dist = math.sqrt((index_tip[0]-middle_tip[0])**2 + (index_tip[1]-middle_tip[1])**2 + (index_tip[2]-middle_tip[2])**2)
-                print("index and middle tip diff: ", dist)
-
+                    if b == 0:
+                        hand_data[FINGERS[finger.type]] += [bone.prev_joint.x, bone.prev_joint.y, bone.prev_joint.z]
+                    hand_data[FINGERS[finger.type]] += [bone.next_joint.x, bone.next_joint.y, bone.next_joint.z]
             
+            # thumb_angles
+            thumb = np.array(hand_data["thumb"]).reshape(-1,3)
+            thumb_tip = thumb[-1]
+            # print(thumb.shape)
+            thumb_bones = [thumb[i+1]-thumb[i] for i in range(1,4)]
+            thumb_angles = np.array([angle(thumb_bones[i], thumb_bones[i+1]) for i in range(0,2)])
+            print(thumb_angles * 180 / math.pi)
+            # print(distance(thumb_tip, palm))
+            # print(thumb_tip[1] - palm[1])
+
+
+            index = np.array(hand_data["index"]).reshape(-1,3)
+            index_tip = index[-1]
+            middle = np.array(hand_data["middle"]).reshape(-1,3)
+            middle_tip = middle[-1]
+            
+            pinky = np.array(hand_data["pinky"]).reshape(-1,3)
+            pinky_bones = [pinky[i+1]-pinky[i] for i in range(0,4)]
+            # print(angle(pinky_bones[1], pinky_bones[2]) * 180 / math.pi)
+            # print(hand_data['pitch'] * 180 / math.pi)
+            # print(thumb[-1][0], index_tip[0], middle_tip[0])
+
+
+            # print(distance(thumb_tip, pinky[1]))
+            # print(hand_data['pitch'] * 180 / math.pi)
+
+        vis_img = vis.visualize(frame.images)
         cv2.imshow('LeapDemo', vis_img)
-        if cv2.waitKey(1) == ord('q'):
+        k = cv2.waitKey(1)
+        if k == ord('q'):
             break
+        elif k == ord('s'):
+            print('Writing img')
+            cv2.imwrite(f'vis_img/{idx}.jpg', vis_img)
+            idx += 1
+
 
 
 def main():

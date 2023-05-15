@@ -74,14 +74,14 @@ def undistort(image, coordinate_map, coefficient_map, width, height):
                              cv2.INTER_LINEAR)
     return destination
 
-DYNAMIC_GESTURES = ['d_fist', 'd_rotate_left', 'd_rotate_right', 'd_left', 'd_right', 'd_up', 'd_down', 'd_negative', 'd_stop', 'd_thumb']
+DYNAMIC_GESTURES = ['d_fist', 'd_rotate_left', 'd_rotate_right', 'd_left', 'd_right', 'd_up', 'd_down', 'd_negative', 'd_stop', 'd_thumb', 'd_thumb_pinky']
 STATIC_GESTURES = ['palm', 'palm_left', 'palm_right', 'palm_up', 'up', 'down', 'left', 'right', 'fist', 'hook', 'stop', 'thumb_in', 'negative']
 
 def run(controller):
     maps_initialized = False
 
-    out_dir = 'data_collection/LeapDatav4/Mom'
-    dynamic = False
+    out_dir = 'data_collection/LeapDatav5/Phat'
+    dynamic = True
     recording = False
     stop_flag = False
 
@@ -128,6 +128,7 @@ def run(controller):
                         hand_data['yaw'] = hand.direction.yaw
                         hand_data['wrist'] = [hand.arm.wrist_position.x, hand.arm.wrist_position.y, hand.arm.wrist_position.z]
 
+                        # print(hand_data['pitch'] * 180 / math.pi)
                         # extract skeleton: palm, thumb(4), index(5), middle(5), ring(5), pinky(5)
                         hand_data['palm'] = [hand.palm_position.x, hand.palm_position.y, hand.palm_position.z]
                         for finger in hand.fingers:
@@ -149,12 +150,20 @@ def run(controller):
         # keyboard input for recording
         key = cv2.waitKey(1)
         if key == ord('q'):
+            start_time = time.perf_counter()
             print('Start recording')
             recording = True
             frame_id = 0
             recorded_data = {}
             recorded_frames = []
         elif key == ord('w') or stop_flag:
+            # fps calculation
+            end_time = time.perf_counter()
+            elapse = end_time - start_time
+            fps = len(recorded_frames) / elapse
+            print('Elapse: ', elapse)
+            print('FPS:', fps)
+
             stop_flag = False
             print('End recording')
             recording = False
@@ -172,7 +181,7 @@ def run(controller):
                     json.dump(recorded_data, f)
                 # save clip
                 vid = cv2.VideoWriter(f'{out}/{last_idx}/video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 20, (400, 400), 0)
-                print(recorded_frames[0].shape)
+                # print(recorded_frames[0].shape)
                 for frame in recorded_frames:
                     vid.write(frame)
                 vid.release()
