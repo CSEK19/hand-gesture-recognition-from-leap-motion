@@ -36,7 +36,7 @@ gesture_map = {
     'd_negative': 9,
 }
 
-data_folder = 'data_collection/LeapDatav5'
+data_folder = 'LeapData/data_collection/LeapDatav5'
 train_subjects = ['Khang', 'Phat', 'Sang', 'Xuan']
 test_subjects = ['PhatLe', 'Mom']
 

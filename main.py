@@ -1,13 +1,14 @@
 import multiprocessing
-from rehab_games.home_screen import game
+from rehab_games.bk_rehab import BKRehab
 from hand_gesture_recognition import run_HGR
-import pygame
-
 
 if __name__ == "__main__":
+  multiprocessing.freeze_support()
   # start the gesture recognition process
   p = multiprocessing.Process(target=run_HGR)
+  p.daemon=True
   p.start()
 
-  screen = pygame.display.set_mode((1280, 720))
-  game(screen)
+  # start the gaming application
+  app = BKRehab()
+  app.start_app()

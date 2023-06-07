@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 GESTURES = ['close fist', 'move left', 'move right', 'move up', 'move down', 'rotate left', 'rotate right', 'stop', 'thumb in', 'negative']
 
 def debug(path, X, recognizer, static_classifier):
-  vid = cv2.VideoCapture(path + '/video.mp4')
+  vid = cv2.VideoCapture('LeapData/' + path + '/video.mp4')
   out = 'Debug/' + path
   if not os.path.exists(out):
     os.makedirs(out)
@@ -88,7 +88,7 @@ def main():
   recognizer = HandGestureRecognizer(static_classifier)
 
   # load evaluation dataset
-  with open('data_collection/array_data/gesture_data_v5.pkl', 'rb') as f:
+  with open('LeapData/data_collection/array_data/gesture_data_v5.pkl', 'rb') as f:
     data = pickle.load(f)
 
   elapse_times = []
@@ -186,7 +186,7 @@ def main():
 
   # display result table
   df = pd.DataFrame({'Gesture': name, 'Precision': precisions, 'Recall': recalls, 'F1 score': f1_scores})
-  # df.to_csv('gesture_evaluation.csv')
+  # df.to_csv('results/gesture_evaluation.csv')
   print(df)
 
   print('Average elapse time for each frame in the whole dataset:', sum(elapse_times)/n_samples)

@@ -71,29 +71,31 @@ def run_HGR():
   controller = Leap.Controller()
   controller.set_policy_flags(Leap.Controller.POLICY_IMAGES)
   # init hand gesture recognizer and visualizer
-  static_model_weight = 'model\\weights\\SVC_weights_2604.pkl'
-  scaler_weight = 'model\\weights\\scaler_weights_2604.pkl'
+  # static_model_weight = 'model\\weights\\SVC_weights_2604.pkl'
+  # scaler_weight = 'model\\weights\\scaler_weights_2604.pkl'
+  static_model_weight = 'model\\weights\\SVC_weights_0805.pkl'
+  scaler_weight = 'model\\weights\\scaler_weights_0805.pkl'
   vis = Visualizer()
   static_classifier = StaticHandPoseClassifier(static_model_weight, scaler_weight)
   recognizer = HandGestureRecognizer(static_classifier)
   
+  print('Start hand gesture recognition system')
 
   while True:
     frame = controller.frame()
     image = frame.images[0]
 
-    if image.is_valid:
-      hand_feature = []
-      display = None
-      if not frame.hands.is_empty:
-        # make detection
-        hand_feature = extract_feature(frame)
-        gesture = recognizer.detect(hand_feature)
-        # print(gesture)
-        if gesture != 'negative':
-          display = gesture
-          game_control(gesture)
-
+    # if image.is_valid:
+    hand_feature = []
+    display = None
+    if not frame.hands.is_empty:
+      # make detection
+      hand_feature = extract_feature(frame)
+      gesture = recognizer.detect(hand_feature)
+      if gesture != 'negative':
+        display = gesture
+        game_control(gesture)
+        print(gesture)
 
 
       # visualize

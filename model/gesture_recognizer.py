@@ -28,7 +28,7 @@ class HandGestureRecognizer:
     self.classifier = pose_classifier
     self.buffer = []
 
-  def detect(self, feature, heuristic=False, thres=0.45):
+  def detect(self, feature, heuristic=True, thres=0.45):
     # Make detection
     pose, score = self.detect_pose(feature, heuristic, thres)
     
